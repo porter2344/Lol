@@ -1,5 +1,7 @@
 name: Mobile + Release
-on: workflow_dispatch
+
+on: 
+  workflow_dispatch
 
 permissions:
   contents: write
@@ -31,7 +33,7 @@ jobs:
         run: |
           commit_hash=${GITHUB_SHA::7}
           echo "Latest commit hash is $commit_hash"
-          echo "::set-output name=COMMIT_HASH::$commit_hash"
+          echo "COMMIT_HASH=$commit_hash" >> $GITHUB_ENV
 
   build:
     name: ${{ matrix.name }}
@@ -51,14 +53,21 @@ jobs:
             buildArgs: "ios -final -nosign -D officialBuild"
             artifactName: iOSBuild
             artifactPath: "export/release/ios/build/Release-iphoneos/*.ipa"
-    uses: ./.github/workflows/build.yml
-    with:
-        name: ${{ matrix.name }}
-        os: ${{ matrix.os }}
-        setupCommand: ${{ matrix.setupCommand }}
-        buildArgs: ${{ matrix.buildArgs }}
-        artifactName: ${{ matrix.artifactName }}
-        artifactPath: ${{ matrix.artifactPath }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Run build for ${{ matrix.name }}
+        run: |
+          echo "Setting up for ${{ matrix.name }}"
+          ${{ matrix.setupCommand }}
+          ./gradlew ${{ matrix.buildArgs }}
+
+      - name: Upload artifact for ${{ matrix.name }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.artifactName }}
+          path: ${{ matrix.artifactPath }}
 
   Releaser:
     needs: [get-commit-hash, build]
@@ -66,19 +75,19 @@ jobs:
     permissions: write-all
     steps:
       - name: Download Android Build
-        uses: actions/download-artifact@main
+        uses: actions/download-artifact@v3
         with:
-           name: androidBuild
-           path: /home/runner
+          name: androidBuild
+          path: /home/runner/
 
       - name: Move Android File
         run: mv /home/runner/${{ env.PROJECT_NAME }}-release.apk /home/runner/${{ env.PROJECT_NAME }}-Android.apk
 
       - name: Download iOS Build
-        uses: actions/download-artifact@main
+        uses: actions/download-artifact@v3
         with:
-           name: iOSBuild
-           path: ${{ github.workspace }}
+          name: iOSBuild
+          path: ${{ github.workspace }}
 
       - name: Zip iOS Build For Release
         run: zip -r /home/runner/${{ env.PROJECT_NAME }}-iOS.zip ${{ github.workspace }}/${{ env.PROJECT_NAME }}.ipa
